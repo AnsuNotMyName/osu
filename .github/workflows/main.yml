@@ -1,0 +1,63 @@
+name: Build osu!lazer for iOS
+
+on:
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  build-ios:
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore .NET packages
+        run: dotnet restore
+
+      - name: Install CocoaPods (if needed)
+        run: |
+          sudo gem install cocoapods
+          pod install || true
+
+      - name: Build iOS app (archive)
+        run: |
+          xcodebuild -project osu.iOS/osu.iOS.xcodeproj \
+                     -scheme osu.iOS \
+                     -sdk iphoneos \
+                     -configuration Release \
+                     -archivePath ${{ github.workspace }}/build/osu-lazer.xcarchive \
+                     archive
+
+      - name: Export IPA
+        run: |
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+                     -archivePath ${{ github.workspace }}/build/osu-lazer.xcarchive \
+                     -exportPath ${{ github.workspace }}/build/ipa \
+                     -exportOptionsPlist ExportOptions.plist
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: osu-lazer.ipa
+          path: build/ipa/*.ipa
